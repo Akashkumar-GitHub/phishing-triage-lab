@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>Phishing Email Triage Lab</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+      color: #182824;
+      background: #f4f6f1;
+      --muted: #465a53;
+      --line: #d6dfd8;
+      --selection: #e5f1e9;
+      --green: #225647;
+      --mono: "Cascadia Code", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input, select, textarea { font: inherit; }
+    button, select { cursor: pointer; }
+    :focus-visible { outline: 3px solid #34775f; outline-offset: 2px; }
+    h1, h2, h3, p, dl { margin: 0; }
+    h1 { font-size: 1.28rem; letter-spacing: -.02em; }
+    h2 { font-size: 1.13rem; }
+    h3 { font-size: .99rem; }
+    .frame { width: min(1390px, calc(100% - 64px)); margin-inline: auto; }
+    .masthead { background: #18372f; color: #fff; }
+    .masthead .frame { display: flex; align-items: center; gap: 14px; min-height: 65px; padding-block: 12px; }
+    .origin { color: #d2e9de; border: 1px solid #648c7d; border-radius: 5px; font-size: .78rem; padding: 3px 8px; }
+    main { padding-block: 22px 42px; }
+    .metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 17px; }
+    .metric { background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 10px 13px; display: flex; flex-direction: column-reverse; }
+    .metric dt { color: var(--muted); font-size: .8rem; }
+    .metric dd { margin: 0; font-size: 1.54rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .workspace { display: grid; grid-template-columns: minmax(285px, 1fr) minmax(0, 2.35fr); gap: 14px; align-items: start; }
+    .panel { background: #fff; border: 1px solid var(--line); border-radius: 9px; min-width: 0; }
+    .pad { padding: 14px 17px; }
+    .border { border-top: 1px solid var(--line); }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 9px; }
+    .wrapping { flex-wrap: wrap; }
+    .muted { color: var(--muted); font-size: .86rem; }
+    .mono { font-family: var(--mono); font-size: .82rem; overflow-wrap: anywhere; }
+    .filters { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 8px; margin-top: 10px; }
+    label { display: grid; gap: 3px; font-size: .81rem; color: var(--muted); font-weight: 600; }
+    input, select, textarea { border: 1px solid #a9bdb2; border-radius: 6px; padding: 6px 8px; width: 100%; background: #fff; color: #182824; }
+    textarea { resize: vertical; min-height: 65px; }
+    .queue { padding: 0; margin: 0; list-style: none; max-height: 635px; overflow: auto; }
+    .queue li + li { border-top: 1px solid var(--line); }
+    .entry { border: 0; border-left: 3px solid transparent; background: #fff; color: inherit; text-align: left; width: 100%; padding: 10px 14px; display: grid; gap: 3px; }
+    .entry:hover, .entry[aria-current="true"] { background: var(--selection); }
+    .entry[aria-current="true"] { border-left-color: #47836b; }
+    .entry strong, .detail-title { overflow-wrap: anywhere; }
+    .badge { border-radius: 5px; font-size: .77rem; font-weight: 700; padding: 2px 7px; white-space: nowrap; }
+    .high { background: #f9e2df; color: #8b2728; }
+    .review { background: #fff1cf; color: #6c4b17; }
+    .low { background: #e4f2e7; color: #24583f; }
+    .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .columns > div + div { border-left: 1px solid var(--line); }
+    .fields { margin-top: 6px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
+    .fields dt { color: var(--muted); }
+    .fields dd { margin: 0; overflow-wrap: anywhere; }
+    .findings { padding: 0; list-style: none; margin: 7px 0 0; display: grid; gap: 6px; }
+    .findings li { padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; }
+    .findings p { overflow-wrap: anywhere; }
+    .points { color: var(--muted); font-family: var(--mono); font-size: .79rem; white-space: nowrap; }
+    .table-frame { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; text-align: left; }
+    th, td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+    th { color: var(--muted); font-size: .79rem; }
+    td { font-size: .86rem; }
+    tr:last-child td { border-bottom: 0; }
+    .disposition { background: #f2f7f3; }
+    .disposition-fields { display: grid; grid-template-columns: 125px 1fr; gap: 10px; margin-top: 7px; align-items: start; }
+    .download { color: #fff; background: var(--green); border: 1px solid var(--green); border-radius: 6px; font-size: .85rem; font-weight: 650; padding: 5px 9px; }
+    .download:hover { background: #183b31; }
+    .empty { color: var(--muted); padding-top: 6px; font-size: .86rem; }
+    .notice { margin-top: 4px; }
+    @media (max-width: 880px) {
+      .frame { width: calc(100% - 32px); }
+      .workspace { grid-template-columns: 1fr; }
+      .queue { max-height: 260px; }
+      .metrics { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 535px) {
+      .columns, .disposition-fields { grid-template-columns: 1fr; }
+      .columns > div + div { border-left: 0; border-top: 1px solid var(--line); }
+      .pad { padding-inline: 12px; }
+      .masthead .frame { flex-wrap: wrap; gap: 5px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead"><div class="frame"><h1>Phishing Email Triage Lab</h1><span class="origin" id="origin"></span></div></header>
+  <main class="frame">
+    <dl class="metrics" id="metrics" aria-label="Inbox summary"></dl>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="queue-title">
+        <header class="pad">
+          <div class="row"><h2 id="queue-title">Email queue</h2><span class="muted" id="count" aria-live="polite"></span></div>
+          <div class="filters">
+            <label>Search<input id="search" type="search" placeholder="Subject, sender, or domain"></label>
+            <label>Priority<select id="priority"><option value="">All</option><option>High</option><option>Review</option><option>Low</option></select></label>
+          </div>
+        </header>
+        <ul class="queue border" id="queue"></ul>
+      </section>
+      <section class="panel" id="details" aria-label="Email evidence"></section>
+    </div>
+  </main>
+  <script type="application/json" id="report">__TRIAGE_JSON__</script>
+  <script>
+    "use strict";
+    const get = id => document.getElementById(id);
+    const report = JSON.parse(get("report").textContent);
+    const notesById = new Map();
+    let selected = report.cases[0]?.id;
+
+    function node(tag, text, className) {
+      const item = document.createElement(tag);
+      if (text !== undefined) item.textContent = text;
+      if (className) item.className = className;
+      return item;
+    }
+
+    function badge(priority) {
+      return node("span", priority, "badge " + priority.toLowerCase());
+    }
+
+    function fields(pairs) {
+      const list = node("dl", undefined, "fields");
+      for (const [label, value] of pairs) list.append(node("dt", label), node("dd", value, "mono"));
+      return list;
+    }
+
+    function block(title, className = "pad border") {
+      const area = node("div", undefined, className);
+      area.append(node("h3", title));
+      return area;
+    }
+
+    function table(headers, rows, empty) {
+      if (!rows.length) return node("p", empty, "empty");
+      const wrap = node("div", undefined, "table-frame");
+      const result = node("table");
+      const heading = result.createTHead().insertRow();
+      for (const label of headers) {
+        const cell = node("th", label);
+        cell.scope = "col";
+        heading.append(cell);
+      }
+      const body = result.createTBody();
+      for (const values of rows) {
+        const row = body.insertRow();
+        for (const value of values) row.insertCell().textContent = value;
+      }
+      wrap.append(result);
+      return wrap;
+    }
+
+    function label(text, input) {
+      const area = node("label", text);
+      area.append(input);
+      return area;
+    }
+
+    function downloadCase(item, decision, notice) {
+      const payload = {schema_version: 1, input: report.synthetic ? "Synthetic inbox" : "Imported email",
+        evidence: item, analyst: decision};
+      const file = new Blob([JSON.stringify(payload, null, 2) + "\n"], {type: "application/json"});
+      const url = URL.createObjectURL(file);
+      const link = node("a");
+      link.href = url;
+      link.download = item.id + "-case.json";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      notice.textContent = "Case report download requested.";
+    }
+
+    function renderDetails(item) {
+      const panel = get("details");
+      panel.replaceChildren();
+      if (!item) {
+        panel.append(node("p", "No email selected.", "pad muted"));
+        return;
+      }
+      const title = node("header", undefined, "pad");
+      const titleLine = node("div", undefined, "row wrapping");
+      titleLine.append(node("h2", item.subject, "detail-title"), badge(item.priority));
+      title.append(titleLine, node("p", item.id + " · " + item.file + " · " + item.score + " points", "muted mono"));
+      panel.append(title);
+
+      const columns = node("div", undefined, "columns border");
+      const sender = block("Message headers", "pad");
+      sender.append(fields([
+        ["From", item.sender?.address || "Unavailable"],
+        ["Reply-To", item.reply_to?.address || "Unavailable"],
+        ["Message date", item.date || "Unavailable"],
+      ]));
+      const auth = block("Mail authentication", "pad");
+      auth.append(fields([
+        ["Results", item.authentication.status],
+        ["Service", item.authentication.service || "Unavailable"],
+        ...Object.entries(item.authentication.results).map(([method, outcomes]) => [method.toUpperCase(), outcomes.join(", ") || "Unavailable"]),
+      ]));
+      columns.append(sender, auth);
+      panel.append(columns);
+
+      const why = block("Why this email was flagged");
+      const list = node("ul", undefined, "findings");
+      for (const finding of item.findings) {
+        const entry = node("li");
+        const row = node("div", undefined, "row");
+        row.append(node("strong", finding.label), node("span", "+" + finding.points, "points"));
+        entry.append(row, node("p", finding.detail, "muted"));
+        list.append(entry);
+      }
+      why.append(item.findings.length ? list : node("p", "No scored indicators found.", "empty"));
+      panel.append(why);
+
+      const destinations = block("Link destinations");
+      destinations.append(table(["Defanged destination", "Source"], item.indicators.map(entry =>
+        [entry.host, entry.sources.join(", ")]), "No HTTP or HTTPS link destinations found."));
+      panel.append(destinations);
+
+      const attachments = block("Attachment metadata");
+      attachments.append(table(["Filename", "Type"], item.attachments.map(entry =>
+        [entry.filename, entry.kind]), "No attachments found."));
+      panel.append(attachments);
+
+      const dns = block("Offline DNS evidence");
+      const noDns = !report.dns_supplied ? "No offline DNS file was supplied."
+        : !item.date ? "Message date unavailable for time correlation."
+        : "No matching DNS observations in the review window.";
+      dns.append(table(["Time (UTC)", "Client", "Matching domain"], item.dns_matches.map(entry =>
+        [entry.timestamp, entry.client, entry.indicator]), noDns));
+      if (item.dns_matches.length) dns.append(node("p", "A matching DNS query provides context. Confirm any user action separately.", "muted"));
+      panel.append(dns);
+
+      const area = node("div", undefined, "pad border disposition");
+      const controls = node("div", undefined, "row wrapping");
+      const download = node("button", "Download case report", "download");
+      download.type = "button";
+      controls.append(node("h3", "Analyst decision"), download);
+      const inputs = node("div", undefined, "disposition-fields");
+      const decision = notesById.get(item.id) || {disposition: "Open", notes: ""};
+      notesById.set(item.id, decision);
+      const status = node("select");
+      for (const name of ["Open", "Investigate", "Escalate", "Close"]) status.add(new Option(name));
+      status.value = decision.disposition;
+      status.addEventListener("change", () => { decision.disposition = status.value; });
+      const notes = node("textarea");
+      notes.placeholder = "Summarize the evidence and what you would verify next.";
+      notes.maxLength = 4000;
+      notes.value = decision.notes;
+      notes.addEventListener("input", () => { decision.notes = notes.value; });
+      inputs.append(label("Disposition", status), label("Case notes", notes));
+      const notice = node("p", "Download this case to save your decision.", "notice muted");
+      notice.setAttribute("role", "status");
+      download.addEventListener("click", () => downloadCase(item, decision, notice));
+      area.append(controls, inputs, notice);
+      panel.append(area);
+    }
+
+    function render() {
+      const filter = get("priority").value;
+      const query = get("search").value.toLowerCase().trim();
+      const matches = report.cases.filter(item => {
+        const terms = [item.id, item.subject, item.sender?.address, item.reply_to?.address,
+          ...item.indicators.map(entry => entry.host.replaceAll("[.]", ".").replaceAll("[:]", ":"))];
+        return (!filter || item.priority === filter) && terms.join(" ").toLowerCase().includes(query);
+      });
+      const item = matches.find(candidate => candidate.id === selected) || matches[0];
+      selected = item?.id;
+      get("count").textContent = matches.length + " of " + report.cases.length;
+      const queue = get("queue");
+      queue.replaceChildren();
+      for (const candidate of matches) {
+        const entry = node("li");
+        const button = node("button", undefined, "entry");
+        button.type = "button";
+        if (candidate.id === selected) button.setAttribute("aria-current", "true");
+        const title = node("span", undefined, "row");
+        title.append(node("strong", candidate.subject), badge(candidate.priority));
+        button.append(title, node("span", candidate.sender?.address || "Sender unavailable", "muted mono"));
+        button.addEventListener("click", () => {
+          selected = candidate.id;
+          render();
+          queue.querySelector('[aria-current="true"]')?.focus();
+        });
+        entry.append(button);
+        queue.append(entry);
+      }
+      if (!matches.length) queue.append(node("li", "No emails match these filters.", "pad muted"));
+      renderDetails(item);
+    }
+
+    get("origin").textContent = report.synthetic ? "Synthetic inbox" : "Imported emails";
+    for (const [key, label] of [
+      ["messages", "Emails reviewed"], ["high", "High priority"], ["review", "Needs review"],
+      ["low", "Low priority"], ["indicators", "Unique destinations"], ["dns_correlated", "DNS-linked emails"],
+    ]) {
+      const card = node("div", undefined, "metric");
+      card.append(node("dt", label), node("dd", report.summary[key]));
+      get("metrics").append(card);
+    }
+    get("priority").addEventListener("change", render);
+    get("search").addEventListener("input", render);
+    render();
+  </script>
+</body>
+</html>
